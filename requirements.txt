@@ -1,2 +1,3 @@
 flask
 python-docx
+gunicorn==22.0.0
