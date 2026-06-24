@@ -47,6 +47,8 @@ def _normalize(intake):
         intake["DurationChoice"] = "Standard"
     elif dc.startswith("fixed"):
         intake["DurationChoice"] = "Fixed term"
+    else:
+        intake["DurationChoice"] = "TBD"   # blank/unknown -> visible placeholder, never an empty heading
 
     # FranchiseCarveOut -> "Keep" / "Remove"  (defensive; already clean today)
     fc = low("FranchiseCarveOut")
@@ -88,20 +90,20 @@ def _normalize(intake):
 def _tokens(intake):
     return {
         "HemaName": intake.get("HemaName", "HEMA B.V."),
-        "HemaKvK": intake.get("HemaKvK", "________"),
-        "HemaSignatory": intake.get("HemaSignatory", "____________________"),
+        "HemaKvK": (intake.get("HemaKvK") or "________"),
+        "HemaSignatory": (intake.get("HemaSignatory") or "____________________"),
         "HemaFunction": intake.get("HemaFunction", "unitmanager"),
-        "CounterpartyName": intake.get("CounterpartyName", "____________________"),
+        "CounterpartyName": (intake.get("CounterpartyName") or "____________________"),
         "CounterpartyType": intake.get("CounterpartyType", "een besloten vennootschap"),
-        "CounterpartyOffice": intake.get("CounterpartyOffice", "____________________"),
-        "CounterpartyKvK": intake.get("CounterpartyKvK", "________"),
-        "CounterpartySignatory": intake.get("CounterpartySignatory", "____________________"),
-        "CounterpartyFunction": intake.get("CounterpartyFunction", "____________________"),
-        "Purpose": intake.get("Purpose", "____________________"),
-        "DurationTerm": intake.get("DurationTerm", "____________________"),
+        "CounterpartyOffice": (intake.get("CounterpartyOffice") or "____________________"),
+        "CounterpartyKvK": (intake.get("CounterpartyKvK") or "________"),
+        "CounterpartySignatory": (intake.get("CounterpartySignatory") or "____________________"),
+        "CounterpartyFunction": (intake.get("CounterpartyFunction") or "____________________"),
+        "Purpose": (intake.get("Purpose") or "____________________"),
+        "DurationTerm": (intake.get("DurationTerm") or "____________________"),
         "CounterpartyDesignation": intake.get("CounterpartyDesignation", "Leverancier"),
-        "VABOffice": intake.get("VABOffice", "____________________"),
-        "VABKvK": intake.get("VABKvK", "________"),
+        "VABOffice": (intake.get("VABOffice") or "____________________"),
+        "VABKvK": (intake.get("VABKvK") or "________"),
     }
 
 
