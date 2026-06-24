@@ -31,6 +31,60 @@ MASTER_PATH = os.path.join(os.path.dirname(__file__), "HEMA_NDA_master.docx")
 SHARED_SECRET = os.environ.get("NDA_SHARED_SECRET", "")
 
 
+def _normalize(intake):
+    """Map the form's human-readable dropdown values to the exact keywords/phrases
+    the template's [[IF]] conditions and {{tokens}} expect. The form stores long
+    labels (e.g. 'Standard (until ...)'); the template checks for 'Standard'.
+    This is the single place that bridges that gap, so the form can keep nice labels."""
+    intake = dict(intake or {})
+
+    def low(k):
+        return str(intake.get(k, "")).strip().lower()
+
+    # DurationChoice -> "Standard" / "Fixed term"
+    dc = low("DurationChoice")
+    if dc.startswith("standard"):
+        intake["DurationChoice"] = "Standard"
+    elif dc.startswith("fixed"):
+        intake["DurationChoice"] = "Fixed term"
+
+    # FranchiseCarveOut -> "Keep" / "Remove"  (defensive; already clean today)
+    fc = low("FranchiseCarveOut")
+    if fc.startswith("keep"):
+        intake["FranchiseCarveOut"] = "Keep"
+    elif fc.startswith("remove"):
+        intake["FranchiseCarveOut"] = "Remove"
+
+    # NdaType -> "Mutual" / "One-sided"  (NOTE: not used by the template yet)
+    nt = low("NdaType")
+    if "mutual" in nt or "wederkerig" in nt:
+        intake["NdaType"] = "Mutual"
+    elif "one" in nt or "eenzijdig" in nt:
+        intake["NdaType"] = "One-sided"
+
+    # CounterpartyKind -> "Individual" / "Company"  (drives the parties-block variant)
+    ct = low("CounterpartyType")
+    is_individual = ct in ("individual", "person", "persoon", "natuurlijk persoon", "een natuurlijk persoon")
+    intake["CounterpartyKind"] = "Individual" if is_individual else "Company"
+
+    # CounterpartyType -> Dutch legal-entity phrase used in the company parties sentence
+    if is_individual:
+        intake["CounterpartyType"] = "een natuurlijk persoon"
+    elif ct:
+        intake["CounterpartyType"] = "een besloten vennootschap"
+
+    # For an individual, "Functie" in the signature block doesn't apply -> sign in person
+    if is_individual and low("CounterpartyFunction") in ("", "individual", "person", "persoon"):
+        intake["CounterpartyFunction"] = "namens zichzelf"
+
+    # CounterpartyDesignation -> how the counterparty is named throughout.
+    # One-sided supplier relationship -> "Leverancier"; mutual -> neutral "Wederpartij".
+    intake["CounterpartyDesignation"] = "Wederpartij" if intake.get("NdaType") == "Mutual" else "Leverancier"
+
+    return intake
+
+
+
 def _tokens(intake):
     return {
         "HemaName": intake.get("HemaName", "HEMA B.V."),
@@ -45,6 +99,9 @@ def _tokens(intake):
         "CounterpartyFunction": intake.get("CounterpartyFunction", "____________________"),
         "Purpose": intake.get("Purpose", "____________________"),
         "DurationTerm": intake.get("DurationTerm", "____________________"),
+        "CounterpartyDesignation": intake.get("CounterpartyDesignation", "Leverancier"),
+        "VABOffice": intake.get("VABOffice", "____________________"),
+        "VABKvK": intake.get("VABKvK", "________"),
     }
 
 
@@ -86,6 +143,7 @@ def _accept_tracked_changes(doc):
 
 
 def generate_docx_bytes(intake):
+    intake = _normalize(intake)
     doc = Document(MASTER_PATH)
     tok = _tokens(intake)
 
