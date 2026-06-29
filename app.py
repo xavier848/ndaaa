@@ -28,7 +28,17 @@ from docx.oxml.ns import qn
 app = Flask(__name__)
 
 MASTER_PATH = os.path.join(os.path.dirname(__file__), "HEMA_NDA_master.docx")
+MASTER_PATH_EN = os.path.join(os.path.dirname(__file__), "HEMA_NDA_master_EN.docx")
 SHARED_SECRET = os.environ.get("NDA_SHARED_SECRET", "")
+
+
+def _is_english(intake):
+    """Return True if the requested document language is English.
+    The form sends a 'Language' field (e.g. 'English' / 'Engels' / 'Nederlands').
+    Anything that isn't clearly English defaults to Dutch, so existing Dutch
+    behaviour is unchanged when the field is absent."""
+    lang = str((intake or {}).get("Language", "")).strip().lower()
+    return lang.startswith("en") or "engels" in lang
 
 
 def _normalize(intake):
@@ -69,32 +79,42 @@ def _normalize(intake):
     is_individual = ct in ("individual", "person", "persoon", "natuurlijk persoon", "een natuurlijk persoon")
     intake["CounterpartyKind"] = "Individual" if is_individual else "Company"
 
-    # CounterpartyType -> Dutch legal-entity phrase used in the company parties sentence
+    english = _is_english(intake)
+
+    # CounterpartyType -> legal-entity phrase used in the company parties sentence.
+    # Dutch keeps the Dutch phrasing; English uses the English equivalent.
     if is_individual:
-        intake["CounterpartyType"] = "een natuurlijk persoon"
+        intake["CounterpartyType"] = "a natural person" if english else "een natuurlijk persoon"
     elif ct:
-        intake["CounterpartyType"] = "een besloten vennootschap"
+        intake["CounterpartyType"] = "a private limited company" if english else "een besloten vennootschap"
 
     # For an individual, "Functie" in the signature block doesn't apply -> sign in person
     if is_individual and low("CounterpartyFunction") in ("", "individual", "person", "persoon"):
-        intake["CounterpartyFunction"] = "namens zichzelf"
+        intake["CounterpartyFunction"] = "on their own behalf" if english else "namens zichzelf"
 
     # CounterpartyDesignation -> how the counterparty is named throughout.
-    # One-sided supplier relationship -> "Leverancier"; mutual -> neutral "Wederpartij".
-    intake["CounterpartyDesignation"] = "Wederpartij" if intake.get("NdaType") == "Mutual" else "Leverancier"
+    # One-sided supplier relationship -> "Supplier"/"Leverancier";
+    # mutual -> neutral "Counterparty"/"Wederpartij".
+    if intake.get("NdaType") == "Mutual":
+        intake["CounterpartyDesignation"] = "Counterparty" if english else "Wederpartij"
+    else:
+        intake["CounterpartyDesignation"] = "Supplier" if english else "Leverancier"
 
     return intake
 
 
 
 def _tokens(intake):
+    english = _is_english(intake)
+    default_function = "unit manager" if english else "unitmanager"
+    default_entity = "a private limited company" if english else "een besloten vennootschap"
     return {
         "HemaName": intake.get("HemaName", "HEMA B.V."),
         "HemaKvK": (intake.get("HemaKvK") or "________"),
         "HemaSignatory": (intake.get("HemaSignatory") or "____________________"),
-        "HemaFunction": intake.get("HemaFunction", "unitmanager"),
+        "HemaFunction": intake.get("HemaFunction", default_function),
         "CounterpartyName": (intake.get("CounterpartyName") or "____________________"),
-        "CounterpartyType": intake.get("CounterpartyType", "een besloten vennootschap"),
+        "CounterpartyType": intake.get("CounterpartyType", default_entity),
         "CounterpartyOffice": (intake.get("CounterpartyOffice") or "____________________"),
         "CounterpartyKvK": (intake.get("CounterpartyKvK") or "________"),
         "CounterpartySignatory": (intake.get("CounterpartySignatory") or "____________________"),
@@ -146,7 +166,8 @@ def _accept_tracked_changes(doc):
 
 def generate_docx_bytes(intake):
     intake = _normalize(intake)
-    doc = Document(MASTER_PATH)
+    template_path = MASTER_PATH_EN if _is_english(intake) else MASTER_PATH
+    doc = Document(template_path)
     tok = _tokens(intake)
 
     def process(paragraphs):
